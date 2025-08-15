@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Crypto Tools</title>
+  <link rel="manifest" href="/manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Crypto Tools">
+  <link rel="apple-touch-icon" href="/icons/icon-180.png">
+  <style>
+    :root { --bg:#0b0b0c; --card:#141416; --fg:#f3f4f6; --muted:#9ca3af; --brand:#0b79d0; }
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, system-ui, Helvetica, Arial, sans-serif; margin: 0; background: var(--bg); color: var(--fg); }
+    nav { display: flex; position: sticky; top: 0; background: #111; border-bottom: 1px solid #222; z-index: 5; }
+    nav button { flex: 1; padding: 12px; background: transparent; color: var(--fg); border: none; font-weight: 600; }
+    nav button.active { background: #1b1c1f; }
+    .tab { display: none; padding: 16px; }
+    .tab.active { display: block; }
+    .card { background: var(--card); border-radius: 18px; box-shadow: 0 8px 30px rgba(0,0,0,.25); padding: 16px; }
+    label { display:block; font-size: 13px; color: var(--muted); margin-top: 8px; }
+    input, select { width: 100%; padding: 10px 12px; border-radius: 12px; border: 1px solid #2a2c30; background: #0f1012; color: var(--fg); }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .btn { background: var(--brand); color: #fff; padding: 12px; border: none; border-radius: 12px; font-weight: 700; width: 100%; margin-top: 12px; }
+    .muted { color: var(--muted); font-size: 12px; }
+    .result { margin-top: 12px; font-weight: 700; line-height: 1.5; }
+    .kv { display:flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed #2a2c30; }
+  </style>
+</head>
+<body>
+  <nav>
+    <button id="btnMargin" class="active">Margin Calc</button>
+    <button id="btnSR">S/R Zones</button>
+  </nav>
+
+  <!-- Margin Calculator -->
+  <div id="marginTab" class="tab active">
+    <div class="card">
+      <h2 style="margin:0 0 8px">Margin Calculator</h2>
+      <p class="muted" style="margin:0 0 12px">Risk-based position sizing with optional ATR stop suggestion.</p>
+
+      <label>Account Size (USD)</label>
+      <input id="accountSize" type="number" placeholder="e.g., 10000" inputmode="decimal">
+
+      <div class="row">
+        <div>
+          <label>Risk % per trade</label>
+          <input id="riskPercent" type="number" placeholder="e.g., 2" inputmode="decimal">
+        </div>
+        <div>
+          <label>Leverage (×)</label>
+          <input id="leverage" type="number" value="1" min="1" step="1" inputmode="numeric">
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label>Direction</label>
+          <select id="direction">
+            <option value="long">Long</option>
+            <option value="short">Short</option>
+          </select>
+        </div>
+        <div>
+          <label>Entry Price (USD)</label>
+          <input id="entryPrice" type="number" placeholder="e.g., 40000" inputmode="decimal">
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label>Stop Loss % (distance)</label>
+          <input id="slPercent" type="number" placeholder="e.g., 1.5" inputmode="decimal">
+        </div>
+        <div>
+          <label>Stop Loss Price (auto sync)</label>
+          <input id="slPrice" type="number" placeholder="e.g., 39400" inputmode="decimal">
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label>ATR timeframe (for suggestion)</label>
+          <select id="tfSL">
+            <option value="1m">1m</option>
+            <option value="3m">3m</option>
+            <option value="5m">5m</option>
+            <option value="15m" selected>15m</option>
+            <option value="30m">30m</option>
+            <option value="1h">1h</option>
+            <option value="2h">2h</option>
+            <option value="4h">4h</option>
+            <option value="6h">6h</option>
+            <option value="8h">8h</option>
+            <option value="12h">12h</option>
+            <option value="1d">1d</option>
+            <option value="3d">3d</option>
+            <option value="1w">1w</option>
+            <option value="1M">1M</option>
+          </select>
+        </div>
+        <div>
+          <label>ATR multiple</label>
+          <input id="atrMult" type="number" step="0.1" value="1.0" inputmode="decimal">
+        </div>
+      </div>
+
+      <button class="btn" id="btnSuggestSL">Suggest SL (ATR)</button>
+      <button class="btn" id="btnCalc">Calculate</button>
+
+      <div id="marginResult" class="result"></div>
+      <div id="marginNotes" class="muted"></div>
+    </div>
+  </div>
+
+  <!-- Support / Resistance Zones -->
+  <div id="srTab" class="tab">
+    <div class="card">
+      <h2 style="margin:0 0 8px">BTC Support & Resistance</h2>
+      <p class="muted" style="margin:0 0 12px">Zones from clustered swing highs/lows. Default symbol BTCUSDT.</p>
+
+      <div class="row">
+        <div>
+          <label>Symbol</label>
+          <input id="symbol" value="BTCUSDT" placeholder="e.g., BTCUSDT">
+        </div>
+        <div>
+          <label>Candle Timeframe</label>
+          <select id="timeframe">
+            <option value="1m">1m</option>
+            <option value="3m">3m</option>
+            <option value="5m">5m</option>
+            <option value="15m" selected>15m</option>
+            <option value="30m">30m</option>
+            <option value="1h">1h</option>
+            <option value="2h">2h</option>
+            <option value="4h">4h</option>
+            <option value="6h">6h</option>
+            <option value="8h">8h</option>
+            <option value="12h">12h</option>
+            <option value="1d">1d</option>
+            <option value="3d">3d</option>
+            <option value="1w">1w</option>
+            <option value="1M">1M (monthly)</option>
+            <option value="1Y">1Y (yearly view)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label>Lookback Window</label>
+          <select id="lookback">
+            <option value="auto" selected>Auto (max 1000 candles)</option>
+            <option value="1w">Last 1 week</option>
+            <option value="1m">Last 1 month</option>
+            <option value="3m">Last 3 months</option>
+            <option value="6m">Last 6 months</option>
+            <option value="1y">Last 1 year</option>
+          </select>
+        </div>
+        <div>
+          <label>Zone Sensitivity</label>
+          <select id="sensitivity">
+            <option value="0.5" selected>Normal (≈0.5×ATR)</option>
+            <option value="0.3">Tighter (≈0.3×ATR)</option>
+            <option value="0.8">Wider (≈0.8×ATR)</option>
+          </select>
+        </div>
+      </div>
+
+      <button class="btn" id="btnZones">Get Zones</button>
+      <div id="srResult" class="result"></div>
+      <div id="srNotes" class="muted"></div>
+    </div>
+  </div>
+
+<script>
+  // --- Tab switching ---
+  const tabs = { margin: document.getElementById('marginTab'), sr: document.getElementById('srTab') };
+  document.getElementById('btnMargin').onclick = () => switchTab('margin');
+  document.getElementById('btnSR').onclick = () => switchTab('sr');
+  function switchTab(tab) {
+    document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    if (tab === 'margin') { document.getElementById('btnMargin').classList.add('active'); tabs.margin.classList.add('active'); }
+    if (tab === 'sr') { document.getElementById('btnSR').classList.add('active'); tabs.sr.classList.add('active'); }
+  }
+
+  // --- Utilities ---
+  const $ = id => document.getElementById(id);
+  const fmt = (n, d=2) => Number(n).toLocaleString(undefined,{maximumFractionDigits:d, minimumFractionDigits:d});
+
+  // --- Fetch OHLC from Binance ---
+  async function fetchKlines(symbol, interval, limit=1000) {
+    const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('Network error fetching klines');
+    return await res.json();
+  }
+
+  function computeATR(klines, period=14) {
+    const highs = klines.map(c => +c[2]);
+    const lows  = klines.map(c => +c[3]);
+    const closes= klines.map(c => +c[4]);
+    const TR = [];
+    for (let i=0;i<highs.length;i++){
+      if (i===0) { TR.push(highs[i]-lows[i]); continue; }
+      const prevClose = closes[i-1];
+      const tr = Math.max(highs[i]-lows[i], Math.abs(highs[i]-prevClose), Math.abs(lows[i]-prevClose));
+      TR.push(tr);
+    }
+    const n = Math.min(period, TR.length);
+    return TR.slice(-n).reduce((a,b)=>a+b,0)/n;
+  }
+
+  // --- Margin Calculator ---
+  function syncSLFromPercent(){
+    const dir = $('direction').value;
+    const entry = parseFloat($('entryPrice').value);
+    const slPct = parseFloat($('slPercent').value);
+    if (isNaN(entry) || isNaN(slPct)) return;
+    $('slPrice').value = dir==='long' ? (entry * (1 - slPct/100)).toFixed(2) : (entry * (1 + slPct/100)).toFixed(2);
+  }
+  function syncPercentFromSL(){
+    const dir = $('direction').value;
+    const entry = parseFloat($('entryPrice').value);
+    const slP = parseFloat($('slPrice').value);
+    if (isNaN(entry) || isNaN(slP) || entry<=0) return;
+    const dist = dir==='long' ? (entry - slP) : (slP - entry);
+    $('slPercent').value = ((dist/entry)*100).toFixed(3);
+  }
+  $('slPercent').addEventListener('input', syncSLFromPercent);
+  $('slPrice').addEventListener('input', syncPercentFromSL);
+  $('entryPrice').addEventListener('input', ()=>{ syncSLFromPercent(); syncPercentFromSL(); });
+  $('direction').addEventListener('change', ()=>{ syncSLFromPercent(); syncPercentFromSL(); });
+
+  $('btnSuggestSL').addEventListener('click', async ()=>{
+    try {
+      const entry = parseFloat($('entryPrice').value);
+      if (isNaN(entry) || entry<=0) { alert('Enter a valid Entry Price first.'); return; }
+      const tf = $('tfSL').value; const mult = parseFloat($('atrMult').value)||1.0;
+      const kl = await fetchKlines('BTCUSDT', tf, 300);
+      const atr = computeATR(kl, 14);
+      const dir = $('direction').value;
+      const sl = dir==='long' ? entry - atr*mult : entry + atr*mult;
+      $('slPrice').value = sl.toFixed(2);
+      syncPercentFromSL();
+      $('marginNotes').textContent = `Suggested SL uses ATR(14) × ${mult} on ${tf}. ATR ≈ ${fmt(atr,2)}.`;
+    } catch(err){ alert('Could not suggest SL: '+err.message); }
+  });
+
+  $('btnCalc').addEventListener('click', ()=>{
+    const acct = parseFloat($('accountSize').value);
+    const riskPct = parseFloat($('riskPercent').value);
+    const lev = Math.max(1, parseInt($('leverage').value)||1);
+    const dir = $('direction').value;
+    const entry = parseFloat($('entryPrice').value);
+    const slP = parseFloat($('slPrice').value);
+
+    if ([acct,riskPct,entry,slP].some(x=>isNaN(x))){ alert('Please fill Account Size, Risk %, Entry, and SL.'); return; }
+    if (entry<=0 || acct<=0 || riskPct<=0){ alert('Values must be positive.'); return; }
+
+    const risk$ = acct * (riskPct/100);
+    const priceRiskPerUnit = dir==='long' ? (entry - slP) : (slP - entry);
+    if (priceRiskPerUnit<=0){ alert('Stop must be beyond entry in the correct direction.'); return; }
+
+    const qty = risk$ / priceRiskPerUnit;              // BTC size
+    const positionValue = qty * entry;                 // USD notional
+    const marginRequired = positionValue / lev;        // USD margin
+    const slPercent = (priceRiskPerUnit/entry)*100;
+
+    $('marginResult').innerHTML = `
+      <div class="kv"><span>Risk $</span><span>$${fmt(risk$,2)}</span></div>
+      <div class="kv"><span>Quantity</span><span>${fmt(qty,6)} BTC</span></div>
+      <div class="kv"><span>Position Value</span><span>$${fmt(positionValue,2)}</span></div>
+      <div class="kv"><span>Margin Required @ ${lev}×</span><span>$${fmt(marginRequired,2)}</span></div>
+      <div class="kv"><span>Stop Loss</span><span>${dir==='long'?'↓':'↑'} $${fmt(slP,2)} (${fmt(slPercent,3)}%)</span></div>
+    `;
+    $('marginNotes').textContent = 'Excludes fees/funding/liquidation buffers. Ensure liquidation is outside your SL.';
+  });
+
+  // --- Support/Resistance Zones ---
+  function findSwingPoints(klines, window=3){
+    const highs = klines.map(c=>+c[2]);
+    const lows = klines.map(c=>+c[3]);
+    const swingsHi = []; const swingsLo = [];
+    for (let i=window;i<klines.length-window;i++){
+      const h = highs[i]; const l = lows[i];
+      let isMax = true, isMin = true;
+      for (let j=i-window;j<=i+window;j++){
+        if (highs[j]>h) isMax=false;
+        if (lows[j]<l) isMin=false;
+      }
+      if (isMax) swingsHi.push(h);
+      if (isMin) swingsLo.push(l);
+    }
+    return { swingsHi, swingsLo };
+  }
+
+  function clusterLevels(levels, tolerance){
+    levels.sort((a,b)=>a-b);
+    const clusters=[]; let cur=[];
+    for (const lv of levels){
+      if (!cur.length || Math.abs(lv - cur[cur.length-1]) <= tolerance){ cur.push(lv); }
+      else { clusters.push(cur.slice()); cur=[lv]; }
+    }
+    if (cur.length) clusters.push(cur);
+    return clusters.map(arr=>({
+      min: Math.min(...arr), max: Math.max(...arr), count: arr.length, mid: (Math.min(...arr)+Math.max(...arr))/2
+    }));
+  }
+
+  function msForWindow(val){
+    const day = 86400000;
+    if (val==='1w') return 7*day;
+    if (val==='1m') return 30*day;
+    if (val==='3m') return 90*day;
+    if (val==='6m') return 180*day;
+    if (val==='1y') return 365*day;
+    return null;
+  }
+
+  async function computeZones(){
+    const sym = ($('symbol').value || 'BTCUSDT').toUpperCase();
+    const tfSel = $('timeframe').value;
+    const lookback = $('lookback').value;
+    const sens = parseFloat($('sensitivity').value || '0.5');
+
+    const fetchTF = (tfSel==='1Y') ? '1M' : tfSel; // 1Y view uses monthly candles
+    const kl = await fetchKlines(sym, fetchTF, 1000);
+
+    // Trim by lookback window
+    let data = kl;
+    if (tfSel==='1Y') {
+      data = kl.slice(-12); // last 12 months
+    } else if (lookback !== 'auto') {
+      const cutoff = kl[kl.length-1][0] - msForWindow(lookback);
+      data = kl.filter(c => c[0] >= cutoff);
+      if (data.length < 50) data = kl.slice(-Math.min(200, kl.length)); // ensure enough bars
+    }
+
+    const atr = computeATR(data,14);
+    const {swingsHi, swingsLo} = findSwingPoints(data, 3);
+    const tol = Math.max(atr*sens, 5);
+    const resZones = clusterLevels(swingsHi, tol).sort((a,b)=> b.mid - a.mid);
+    const supZones = clusterLevels(swingsLo, tol).sort((a,b)=> a.mid - b.mid);
+    const close = +data[data.length-1][4];
+    return { resZones, supZones, atr, close, sym, tfSel, lookback };
+  }
+
+  function renderZones(zs, label){
+    return zs.slice(0,4).map(z=>`<div class="kv"><span>${label} (${z.count} touches)</span><span>$${fmt(z.min,2)} – $${fmt(z.max,2)}</span></div>`).join('');
+  }
+
+  document.getElementById('btnZones').addEventListener('click', async ()=>{
+    try{
+      document.getElementById('srResult').textContent = 'Calculating…';
+      const {resZones, supZones, atr, close, sym, tfSel, lookback} = await computeZones();
+      document.getElementById('srResult').innerHTML = `
+        <div class="kv"><span>Symbol / TF</span><span>${sym} • ${tfSel}</span></div>
+        <div class="kv"><span>Last Close</span><span>$${fmt(close,2)}</span></div>
+        <div class="kv"><span>ATR(14)</span><span>$${fmt(atr,2)}</span></div>
+        <hr style="border:none;border-top:1px solid #2a2c30;margin:8px 0">
+        ${renderZones(supZones,'Support')}
+        ${renderZones(resZones,'Resistance')}
+      `;
+      document.getElementById('srNotes').textContent = '“1Y” uses monthly candles (last 12). Lookback limits the analysis window; max 1000 candles fetched.';
+    }catch(err){ document.getElementById('srResult').textContent = 'Error: '+err.message; }
+  });
+
+  // --- PWA ---
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js'); });
+  }
+</script>
+</body>
+</html>
