@@ -84,11 +84,11 @@
     </div>
   </div>
 
-  <!-- Support / Resistance Zones (unchanged) -->
+  <!-- Support / Resistance Zones (updated: near-now candles + proximity) -->
   <div id="srTab" class="tab">
     <div class="card">
       <h2 style="margin:0 0 8px">BTC Support & Resistance</h2>
-      <p style="color:#9ca3af; margin:0 0 12px">Zones from clustered swing highs/lows. Default symbol BTCUSDT.</p>
+      <p style="color:#9ca3af; margin:0 0 12px">Zones from clustered swing highs/lows, biased to **recent** price action.</p>
 
       <div class="row">
         <div>
@@ -120,9 +120,20 @@
 
       <div class="row">
         <div>
-          <label>Lookback Window</label>
+          <label>Last N candles (near now)</label>
+          <input id="nCandles" type="number" min="50" step="50" placeholder="e.g., 300">
+        </div>
+        <div>
+          <label>Proximity % around price</label>
+          <input id="proxPct" type="number" step="1" placeholder="e.g., 15">
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label>Lookback Window (fallback)</label>
           <select id="lookback">
-            <option value="auto" selected>Auto (max 1000 candles)</option>
+            <option value="auto" selected>Auto</option>
             <option value="1w">Last 1 week</option>
             <option value="1m">Last 1 month</option>
             <option value="3m">Last 3 months</option>
@@ -173,10 +184,10 @@
     if ([acct,riskPct,entry,dist,lev,rr].some(x=>isNaN(x))) { alert('Fill all inputs.'); return; }
     if (acct<=0 || riskPct<=0 || entry<=0 || dist<=0 || lev<=0 || rr<=0) { alert('All values must be positive.'); return; }
 
-    const potentialLoss = acct * (riskPct/100);                  // 3
-    const positionSize = (potentialLoss * entry) / (dist * lev); // 7
-    const stopLoss = entry - dist;                                // 8 (LONG only)
-    const takeProfit = entry + (dist * rr);                       // 10
+    const potentialLoss = acct * (riskPct/100);
+    const positionSize = (potentialLoss * entry) / (dist * lev);
+    const stopLoss = entry - dist;        // LONG orientation
+    const takeProfit = entry + (dist * rr);
 
     $('outLoss').textContent = `$${fmt(potentialLoss,2)}`;
     $('outPos').textContent  = `$${fmt(positionSize,2)}`;
@@ -186,7 +197,7 @@
     $('outputs').style.display = '';
   });
 
-  // --- S/R (same as before, with Binance fallbacks) ---
+  // --- S/R (near-now window + proximity + fallbacks) ---
   async function fetchKlines(symbol, interval, limit=1000) {
     const endpoints = [
       `https://data-api.binance.vision/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`,
@@ -206,9 +217,66 @@
   }
   function findSwingPoints(klines, window=3){ const H=klines.map(c=>+c[2]); const L=klines.map(c=>+c[3]); const hi=[],lo=[]; for(let i=window;i<klines.length-window;i++){ const h=H[i], l=L[i]; let isMax=true,isMin=true; for(let j=i-window;j<=i+window;j++){ if(H[j]>h) isMax=false; if(L[j]<l) isMin=false; } if(isMax) hi.push(h); if(isMin) lo.push(l);} return {swingsHi:hi,swingsLo:lo}; }
   function clusterLevels(levels,tol){ levels.sort((a,b)=>a-b); const clusters=[]; let cur=[]; for(const lv of levels){ if(!cur.length||Math.abs(lv-cur[cur.length-1])<=tol){cur.push(lv);} else {clusters.push(cur.slice()); cur=[lv];}} if(cur.length) clusters.push(cur); return clusters.map(arr=>({min:Math.min(...arr),max:Math.max(...arr),count:arr.length,mid:(Math.min(...arr)+Math.max(...arr))/2})); }
+
+  function defaultWindow(tf){
+    const map = { '1m':500,'3m':500,'5m':500,'15m':300,'30m':300,'1h':300,'2h':300,'4h':300,'6h':240,'8h':240,'12h':240,'1d':200,'3d':150,'1w':104,'1M':60 };
+    return map[tf] || 300;
+  }
+
   function msForWindow(val){ const d=86400000; if(val==='1w') return 7*d; if(val==='1m') return 30*d; if(val==='3m') return 90*d; if(val==='6m') return 180*d; if(val==='1y') return 365*d; return null; }
-  async function computeZones(){ const sym=($('symbol').value||'BTCUSDT').toUpperCase(); const tfSel=$('timeframe').value; const lookback=$('lookback').value; const fetchTF=(tfSel==='1Y')?'1M':tfSel; const kl=await fetchKlines(sym,fetchTF,1000); let data=kl; if(tfSel==='1Y'){ data=kl.slice(-12);} else if(lookback!=='auto'){ const cutoff=kl[kl.length-1][0]-msForWindow(lookback); data=kl.filter(c=>c[0]>=cutoff); if(data.length<50) data=kl.slice(-Math.min(200,kl.length)); } const atr=computeATR(data,14); const {swingsHi,swingsLo}=findSwingPoints(data,3); const tol=Math.max(atr*0.5,5); const res=clusterLevels(swingsHi,tol).sort((a,b)=>b.mid-a.mid); const sup=clusterLevels(swingsLo,tol).sort((a,b)=>a.mid-b.mid); const close=+data[data.length-1][4]; return {res,sup,atr,close,sym,tfSel}; }
-  document.getElementById('btnZones').addEventListener('click', async()=>{ try{ $('srResult').textContent='Calculating…'; const {res,sup,atr,close,sym,tfSel}=await computeZones(); const fmtn=(n)=>Number(n).toLocaleString(undefined,{maximumFractionDigits:2,minimumFractionDigits:2}); const row=(z,l)=>z.slice(0,4).map(x=>`<div class=\"kv\"><span>${l} (${x.count})</span><span>$${fmtn(x.min)} – $${fmtn(x.max)}</span></div>`).join(''); $('srResult').innerHTML = `<div class=\"kv\"><span>Symbol / TF</span><span>${sym} • ${tfSel}</span></div><div class=\"kv\"><span>Last Close</span><span>$${fmtn(close)}</span></div><div class=\"kv\"><span>ATR(14)</span><span>$${fmtn(atr)}</span></div><hr style=\"border:none;border-top:1px solid #2a2c30;margin:8px 0\">${row(sup,'Support')}${row(res,'Resistance')}`; } catch(err){ $('srResult').textContent='Error: '+err.message; }});
+
+  async function computeZones(){
+    const sym=($('symbol').value||'BTCUSDT').toUpperCase();
+    const tfSel=$('timeframe').value;
+    const lookback=$('lookback').value;
+    const nCandles=parseInt($('nCandles').value);
+    const proxPct=parseFloat($('proxPct').value);
+
+    const fetchTF=(tfSel==='1Y')?'1M':tfSel;
+    const kl=await fetchKlines(sym,fetchTF,1000);
+
+    // Build a recent window near the current price
+    let data=kl;
+    if (!isNaN(nCandles) && nCandles>0) {
+      data = kl.slice(-Math.min(nCandles, kl.length));
+    } else if (lookback==='auto') {
+      data = kl.slice(-Math.min(defaultWindow(tfSel), kl.length));
+    } else if (tfSel==='1Y') {
+      data = kl.slice(-12);
+    } else { // time-based lookback
+      const cutoff = kl[kl.length-1][0]-msForWindow(lookback);
+      data = kl.filter(c=>c[0]>=cutoff);
+      if (data.length<50) data = kl.slice(-Math.min(200,kl.length));
+    }
+
+    const atr=computeATR(data,14);
+    const {swingsHi,swingsLo}=findSwingPoints(data,3);
+    const tol=Math.max(atr*(parseFloat($('sensitivity').value||'0.5')),5);
+    let res=clusterLevels(swingsHi,tol).sort((a,b)=>b.mid-a.mid);
+    let sup=clusterLevels(swingsLo,tol).sort((a,b)=>a.mid-b.mid);
+    const close=+data[data.length-1][4];
+
+    // Optional proximity filter around last close
+    if (!isNaN(proxPct) && proxPct>0) {
+      const band = close*(proxPct/100);
+      const filt = zs => { const out = zs.filter(z=>Math.abs(z.mid-close)<=band); return out.length? out : zs; };
+      res=filt(res); sup=filt(sup);
+    }
+
+    return {res,sup,atr,close,sym,tfSel};
+  }
+
+  document.getElementById('btnZones').addEventListener('click', async()=>{
+    try{
+      $('srResult').textContent='Calculating…';
+      const {res,sup,atr,close,sym,tfSel}=await computeZones();
+      const fmtn=n=>Number(n).toLocaleString(undefined,{maximumFractionDigits:2,minimumFractionDigits:2});
+      const row=(z,l)=>z.slice(0,4).map(x=>`<div class=\"kv\"><span>${l} (${x.count})</span><span>$${fmtn(x.min)} – $${fmtn(x.max)}</span></div>`).join('');
+      $('srResult').innerHTML = `<div class=\"kv\"><span>Symbol / TF</span><span>${sym} • ${tfSel}</span></div><div class=\"kv\"><span>Last Close</span><span>$${fmtn(close)}</span></div><div class=\"kv\"><span>ATR(14)</span><span>$${fmtn(atr)}</span></div><hr style=\"border:none;border-top:1px solid #2a2c30;margin:8px 0\">${row(sup,'Support')}${row(res,'Resistance')}`;
+    } catch(err){
+      $('srResult').textContent='Error: '+err.message;
+    }
+  });
 
   // PWA
   if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js'); }); }
