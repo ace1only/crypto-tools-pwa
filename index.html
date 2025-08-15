@@ -10,7 +10,7 @@
   <meta name="apple-mobile-web-app-title" content="Crypto Tools">
   <link rel="apple-touch-icon" href="/icons/icon-180.png">
   <style>
-    :root { --bg:#0b0b0c; --card:#141416; --fg:#f3f4f6; --muted:#9ca3af; --brand:#0b79d0; }
+    :root { --bg:#0b0b0c; --card:#141416; --fg:#f3f4f6; --muted:#9ca3af; --brand:#0b79d0; --up:#16a34a; --down:#ef4444; --zoneR:rgba(239,68,68,.16); --zoneRBorder:rgba(239,68,68,.45); --zoneS:rgba(34,197,94,.16); --zoneSBorder:rgba(34,197,94,.45); }
     * { box-sizing: border-box; }
     body { font-family: -apple-system, system-ui, Helvetica, Arial, sans-serif; margin: 0; background: var(--bg); color: var(--fg); }
     nav { display: flex; position: sticky; top: 0; background: #111; border-bottom: 1px solid #222; z-index: 5; }
@@ -25,6 +25,11 @@
     .btn { background: var(--brand); color: #fff; padding: 12px; border: none; border-radius: 12px; font-weight: 700; width: 100%; margin-top: 12px; }
     .result { margin-top: 12px; font-weight: 700; line-height: 1.5; }
     .kv { display:flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed #2a2c30; }
+    .tfbar { display:flex; gap:8px; flex-wrap: wrap; margin: 8px 0 12px; }
+    .tfbar button { padding:8px 10px; border-radius: 10px; border:1px solid #2a2c30; background:#0f1012; color:var(--fg); font-weight:700; }
+    .tfbar button.active { border-color: var(--brand); outline: 0; }
+    #srCanvas { width: 100%; height: 360px; display:block; border-radius: 12px; background: #0e0f12; }
+    #srStatus { color: var(--muted); font-size: 12px; margin-top: 6px; }
   </style>
 </head>
 <body>
@@ -84,75 +89,13 @@
     </div>
   </div>
 
-  <!-- Support / Resistance Zones (updated: near-now candles + proximity) -->
+  <!-- S/R Zones CHART-ONLY (timeframe buttons, no inputs) -->
   <div id="srTab" class="tab">
     <div class="card">
-      <h2 style="margin:0 0 8px">BTC Support & Resistance</h2>
-      <p style="color:#9ca3af; margin:0 0 12px">Zones from clustered swing highs/lows, biased to **recent** price action.</p>
-
-      <div class="row">
-        <div>
-          <label>Symbol</label>
-          <input id="symbol" value="BTCUSDT" placeholder="e.g., BTCUSDT">
-        </div>
-        <div>
-          <label>Candle Timeframe</label>
-          <select id="timeframe">
-            <option value="1m">1m</option>
-            <option value="3m">3m</option>
-            <option value="5m">5m</option>
-            <option value="15m" selected>15m</option>
-            <option value="30m">30m</option>
-            <option value="1h">1h</option>
-            <option value="2h">2h</option>
-            <option value="4h">4h</option>
-            <option value="6h">6h</option>
-            <option value="8h">8h</option>
-            <option value="12h">12h</option>
-            <option value="1d">1d</option>
-            <option value="3d">3d</option>
-            <option value="1w">1w</option>
-            <option value="1M">1M (monthly)</option>
-            <option value="1Y">1Y (yearly view)</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="row">
-        <div>
-          <label>Last N candles (near now)</label>
-          <input id="nCandles" type="number" min="50" step="50" placeholder="e.g., 300">
-        </div>
-        <div>
-          <label>Proximity % around price</label>
-          <input id="proxPct" type="number" step="1" placeholder="e.g., 15">
-        </div>
-      </div>
-
-      <div class="row">
-        <div>
-          <label>Lookback Window (fallback)</label>
-          <select id="lookback">
-            <option value="auto" selected>Auto</option>
-            <option value="1w">Last 1 week</option>
-            <option value="1m">Last 1 month</option>
-            <option value="3m">Last 3 months</option>
-            <option value="6m">Last 6 months</option>
-            <option value="1y">Last 1 year</option>
-          </select>
-        </div>
-        <div>
-          <label>Zone Sensitivity</label>
-          <select id="sensitivity">
-            <option value="0.5" selected>Normal (≈0.5×ATR)</option>
-            <option value="0.3">Tighter (≈0.3×ATR)</option>
-            <option value="0.8">Wider (≈0.8×ATR)</option>
-          </select>
-        </div>
-      </div>
-
-      <button class="btn" id="btnZones">Get Zones</button>
-      <div id="srResult" class="result"></div>
+      <h2 style="margin:0 8px 2px 0; display:flex; align-items:center; gap:8px">BTC S/R Chart <small style="color:#9ca3af; font-weight:400">(auto: last N recent candles)</small></h2>
+      <div class="tfbar" id="tfbar"></div>
+      <canvas id="srCanvas"></canvas>
+      <div id="srStatus"></div>
     </div>
   </div>
 
@@ -197,7 +140,11 @@
     $('outputs').style.display = '';
   });
 
-  // --- S/R (near-now window + proximity + fallbacks) ---
+  // --- S/R chart (no inputs) ---
+  const TFs = ['15m','30m','1h','4h','1d','1w','1M'];
+  const defaultWindow = tf => ({ '15m':300,'30m':300,'1h':300,'2h':300,'4h':300,'6h':240,'8h':240,'12h':240,'1d':200,'3d':150,'1w':104,'1M':60 }[tf] || 300);
+  const proxMap = { '15m':0.05,'30m':0.07,'1h':0.12,'4h':0.15,'1d':0.20,'1w':0.30,'1M':0.40 };
+
   async function fetchKlines(symbol, interval, limit=1000) {
     const endpoints = [
       `https://data-api.binance.vision/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`,
@@ -218,65 +165,103 @@
   function findSwingPoints(klines, window=3){ const H=klines.map(c=>+c[2]); const L=klines.map(c=>+c[3]); const hi=[],lo=[]; for(let i=window;i<klines.length-window;i++){ const h=H[i], l=L[i]; let isMax=true,isMin=true; for(let j=i-window;j<=i+window;j++){ if(H[j]>h) isMax=false; if(L[j]<l) isMin=false; } if(isMax) hi.push(h); if(isMin) lo.push(l);} return {swingsHi:hi,swingsLo:lo}; }
   function clusterLevels(levels,tol){ levels.sort((a,b)=>a-b); const clusters=[]; let cur=[]; for(const lv of levels){ if(!cur.length||Math.abs(lv-cur[cur.length-1])<=tol){cur.push(lv);} else {clusters.push(cur.slice()); cur=[lv];}} if(cur.length) clusters.push(cur); return clusters.map(arr=>({min:Math.min(...arr),max:Math.max(...arr),count:arr.length,mid:(Math.min(...arr)+Math.max(...arr))/2})); }
 
-  function defaultWindow(tf){
-    const map = { '1m':500,'3m':500,'5m':500,'15m':300,'30m':300,'1h':300,'2h':300,'4h':300,'6h':240,'8h':240,'12h':240,'1d':200,'3d':150,'1w':104,'1M':60 };
-    return map[tf] || 300;
+  function proximityFilter(zs, close, pct){
+    const band = close*pct; const out = zs.filter(z=>Math.abs(z.mid-close)<=band); return out.length? out : zs; }
+
+  function buildTFButtons(){
+    const bar = $('tfbar'); bar.innerHTML = '';
+    TFs.forEach(tf=>{ const b=document.createElement('button'); b.textContent=tf; b.dataset.tf=tf; b.onclick=()=>renderSR(tf); bar.appendChild(b); });
   }
+  function setActiveTF(tf){ document.querySelectorAll('#tfbar button').forEach(b=> b.classList.toggle('active', b.dataset.tf===tf)); }
 
-  function msForWindow(val){ const d=86400000; if(val==='1w') return 7*d; if(val==='1m') return 30*d; if(val==='3m') return 90*d; if(val==='6m') return 180*d; if(val==='1y') return 365*d; return null; }
-
-  async function computeZones(){
-    const sym=($('symbol').value||'BTCUSDT').toUpperCase();
-    const tfSel=$('timeframe').value;
-    const lookback=$('lookback').value;
-    const nCandles=parseInt($('nCandles').value);
-    const proxPct=parseFloat($('proxPct').value);
-
-    const fetchTF=(tfSel==='1Y')?'1M':tfSel;
-    const kl=await fetchKlines(sym,fetchTF,1000);
-
-    // Build a recent window near the current price
-    let data=kl;
-    if (!isNaN(nCandles) && nCandles>0) {
-      data = kl.slice(-Math.min(nCandles, kl.length));
-    } else if (lookback==='auto') {
-      data = kl.slice(-Math.min(defaultWindow(tfSel), kl.length));
-    } else if (tfSel==='1Y') {
-      data = kl.slice(-12);
-    } else { // time-based lookback
-      const cutoff = kl[kl.length-1][0]-msForWindow(lookback);
-      data = kl.filter(c=>c[0]>=cutoff);
-      if (data.length<50) data = kl.slice(-Math.min(200,kl.length));
-    }
-
-    const atr=computeATR(data,14);
-    const {swingsHi,swingsLo}=findSwingPoints(data,3);
-    const tol=Math.max(atr*(parseFloat($('sensitivity').value||'0.5')),5);
-    let res=clusterLevels(swingsHi,tol).sort((a,b)=>b.mid-a.mid);
-    let sup=clusterLevels(swingsLo,tol).sort((a,b)=>a.mid-b.mid);
-    const close=+data[data.length-1][4];
-
-    // Optional proximity filter around last close
-    if (!isNaN(proxPct) && proxPct>0) {
-      const band = close*(proxPct/100);
-      const filt = zs => { const out = zs.filter(z=>Math.abs(z.mid-close)<=band); return out.length? out : zs; };
-      res=filt(res); sup=filt(sup);
-    }
-
-    return {res,sup,atr,close,sym,tfSel};
-  }
-
-  document.getElementById('btnZones').addEventListener('click', async()=>{
+  async function renderSR(tf){
+    setActiveTF(tf); const status=$('srStatus'); status.textContent = `Loading ${tf}…`;
     try{
-      $('srResult').textContent='Calculating…';
-      const {res,sup,atr,close,sym,tfSel}=await computeZones();
-      const fmtn=n=>Number(n).toLocaleString(undefined,{maximumFractionDigits:2,minimumFractionDigits:2});
-      const row=(z,l)=>z.slice(0,4).map(x=>`<div class=\"kv\"><span>${l} (${x.count})</span><span>$${fmtn(x.min)} – $${fmtn(x.max)}</span></div>`).join('');
-      $('srResult').innerHTML = `<div class=\"kv\"><span>Symbol / TF</span><span>${sym} • ${tfSel}</span></div><div class=\"kv\"><span>Last Close</span><span>$${fmtn(close)}</span></div><div class=\"kv\"><span>ATR(14)</span><span>$${fmtn(atr)}</span></div><hr style=\"border:none;border-top:1px solid #2a2c30;margin:8px 0\">${row(sup,'Support')}${row(res,'Resistance')}`;
-    } catch(err){
-      $('srResult').textContent='Error: '+err.message;
+      const dataAll = await fetchKlines('BTCUSDT', tf==='1Y'?'1M':tf, 1000);
+      const data = dataAll.slice(-Math.min(defaultWindow(tf), dataAll.length));
+      const atr = computeATR(data,14);
+      const {swingsHi,swingsLo} = findSwingPoints(data,3);
+      const tol = Math.max(atr*0.5, 5);
+      let res = clusterLevels(swingsHi,tol).sort((a,b)=>b.mid-a.mid);
+      let sup = clusterLevels(swingsLo,tol).sort((a,b)=>a.mid-b.mid);
+      const close = +data[data.length-1][4];
+      const prox = proxMap[tf] ?? 0.15; // default
+      res = proximityFilter(res, close, prox);
+      sup = proximityFilter(sup, close, prox);
+      drawChart('srCanvas', data, sup, res, close);
+      status.textContent = `BTCUSDT • ${tf} • Close $${fmt(close,2)} • ATR(14) $${fmt(atr,2)}`;
+    } catch(err){ status.textContent = 'Error: '+err.message; }
+  }
+
+  function drawChart(canvasId, kl, supZones, resZones, close){
+    const canvas = $(canvasId); const dpr = window.devicePixelRatio || 1;
+    const styleH = parseInt(getComputedStyle(canvas).height); const styleW = canvas.clientWidth;
+    canvas.width = Math.max(300, styleW) * dpr; canvas.height = Math.max(220, styleH) * dpr;
+    const ctx = canvas.getContext('2d'); ctx.scale(dpr,dpr);
+    const W = canvas.width/dpr, H = canvas.height/dpr; const pad = 12; const plotL = pad, plotR = W - pad, plotT = pad, plotB = H - pad; const PW = plotR-plotL, PH = plotB-plotT;
+
+    // derive price range (consider zones + candles)
+    const highs = kl.map(c=>+c[2]); const lows = kl.map(c=>+c[3]);
+    let pmin = Math.min(...lows), pmax = Math.max(...highs);
+    [...supZones, ...resZones].forEach(z=>{ pmin = Math.min(pmin, z.min); pmax = Math.max(pmax, z.max); });
+    const padPx = (pmax-pmin)*0.08 || 10; pmin -= padPx; pmax += padPx;
+    const yFor = p => plotT + (pmax - p) * PH / (pmax - pmin || 1);
+
+    // background
+    ctx.fillStyle = '#0e0f12'; ctx.fillRect(0,0,W,H);
+
+    // grid lines
+    ctx.strokeStyle = '#1f2328'; ctx.lineWidth = 1; ctx.setLineDash([2,4]);
+    for(let i=0;i<=4;i++){ const y = plotT + (PH*i/4); ctx.beginPath(); ctx.moveTo(plotL, y); ctx.lineTo(plotR, y); ctx.stroke(); }
+    ctx.setLineDash([]);
+
+    // zones first (under candles)
+    function drawZone(z, colorFill, colorStroke){
+      const y1 = yFor(z.max), y2 = yFor(z.min); ctx.fillStyle = colorFill; ctx.fillRect(plotL, y1, PW, Math.max(1, y2-y1));
+      ctx.strokeStyle = colorStroke; ctx.lineWidth = 1; ctx.strokeRect(plotL, y1, PW, Math.max(1, y2-y1));
+      // price label on right
+      ctx.fillStyle = '#cbd5e1'; ctx.font = '11px system-ui, -apple-system, Segoe UI, Roboto';
+      const label = `$${fmt(z.min,0)}–$${fmt(z.max,0)}`;
+      ctx.fillText(label, plotR - ctx.measureText(label).width, Math.max(plotT+12, y1+12));
     }
-  });
+    supZones.slice(0,4).forEach(z=> drawZone(z, getComputedStyle(document.documentElement).getPropertyValue('--zoneS'), getComputedStyle(document.documentElement).getPropertyValue('--zoneSBorder')));
+    resZones.slice(0,4).forEach(z=> drawZone(z, getComputedStyle(document.documentElement).getPropertyValue('--zoneR'), getComputedStyle(document.documentElement).getPropertyValue('--zoneRBorder')));
+
+    // candles
+    const n = kl.length; const cw = Math.max(2, Math.floor(PW / n * 0.8)); const gap = Math.max(1, Math.floor(PW / n * 0.2));
+    let x = plotL + Math.max(0, PW - (cw+gap)*n);
+    ctx.lineWidth = 1;
+    for(const c of kl){
+      const o=+c[1], h=+c[2], l=+c[3], cl=+c[4];
+      const yO=yFor(o), yH=yFor(h), yL=yFor(l), yC=yFor(cl);
+      // wick
+      ctx.strokeStyle = '#9ca3af'; ctx.beginPath(); ctx.moveTo(x+cw/2, yH); ctx.lineTo(x+cw/2, yL); ctx.stroke();
+      // body
+      const up = cl>=o; ctx.fillStyle = up? getComputedStyle(document.documentElement).getPropertyValue('--up') : getComputedStyle(document.documentElement).getPropertyValue('--down');
+      const bodyY = Math.min(yO, yC); const bodyH = Math.max(1, Math.abs(yC - yO));
+      ctx.fillRect(x, bodyY, cw, bodyH);
+      x += cw + gap;
+    }
+
+    // last close line
+    ctx.strokeStyle = '#6b7280'; ctx.setLineDash([6,6]); ctx.beginPath(); ctx.moveTo(plotL, yFor(close)); ctx.lineTo(plotR, yFor(close)); ctx.stroke(); ctx.setLineDash([]);
+
+    // border
+    ctx.strokeStyle = '#222'; ctx.strokeRect(plotL, plotT, PW, PH);
+  }
+
+  // build buttons & initial render
+  function initTFUI(){
+    const bar = $('tfbar');
+    TFs.forEach(tf=>{ const b=document.createElement('button'); b.textContent=tf; b.dataset.tf=tf; b.onclick=()=>renderSR(tf); bar.appendChild(b); });
+    renderSR('1h');
+  }
+
+  // handle resize
+  window.addEventListener('resize', ()=>{ const active = document.querySelector('#tfbar button.active'); if (active) renderSR(active.dataset.tf); });
+
+  // start
+  initTFUI();
 
   // PWA
   if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js'); }); }
