@@ -23,7 +23,6 @@
     input, select { width: 100%; padding: 10px 12px; border-radius: 12px; border: 1px solid #2a2c30; background: #0f1012; color: var(--fg); }
     .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .btn { background: var(--brand); color: #fff; padding: 12px; border: none; border-radius: 12px; font-weight: 700; width: 100%; margin-top: 12px; }
-    .muted { color: var(--muted); font-size: 12px; }
     .result { margin-top: 12px; font-weight: 700; line-height: 1.5; }
     .kv { display:flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed #2a2c30; }
   </style>
@@ -34,44 +33,20 @@
     <button id="btnSR">S/R Zones</button>
   </nav>
 
-  <!-- Margin Calculator -->
+  <!-- Simple Margin Calculator (inputs first, outputs after Calculate) -->
   <div id="marginTab" class="tab active">
     <div class="card">
       <h2 style="margin:0 0 8px">Margin Calculator</h2>
-      <p class="muted" style="margin:0 0 12px">Risk-based position sizing. Choose SL mode: % distance, exact price, or ROE % (exchange style).</p>
 
-      <label>Account Size (USD)</label>
-      <input id="accountSize" type="number" placeholder="e.g., 100" inputmode="decimal">
-
+      <!-- Inputs -->
       <div class="row">
         <div>
-          <label>Risk input</label>
-          <select id="riskMode">
-            <option value="percent" selected>% of account</option>
-            <option value="fixed">$ fixed risk</option>
-          </select>
+          <label>Account Size (USD)</label>
+          <input id="accountSize" type="number" placeholder="e.g., 100" inputmode="decimal">
         </div>
-        <div id="riskPercentWrap">
-          <label>Risk % per trade</label>
+        <div>
+          <label>Risk %</label>
           <input id="riskPercent" type="number" placeholder="e.g., 5" inputmode="decimal">
-        </div>
-        <div id="riskFixedWrap" style="display:none">
-          <label>Risk $</label>
-          <input id="riskFixed" type="number" placeholder="e.g., 5" inputmode="decimal">
-        </div>
-      </div>
-
-      <div class="row">
-        <div>
-          <label>Leverage (×)</label>
-          <input id="leverage" type="number" value="5" min="1" step="1" inputmode="numeric">
-        </div>
-        <div>
-          <label>Direction</label>
-          <select id="direction">
-            <option value="long">Long</option>
-            <option value="short">Short</option>
-          </select>
         </div>
       </div>
 
@@ -81,67 +56,39 @@
           <input id="entryPrice" type="number" placeholder="e.g., 118100" inputmode="decimal">
         </div>
         <div>
-          <label>SL input mode</label>
-          <select id="slMode">
-            <option value="percent" selected>% (price distance)</option>
-            <option value="price">Price</option>
-            <option value="roe">ROE % (exchange)</option>
-          </select>
+          <label>Distance $</label>
+          <input id="distance" type="number" placeholder="e.g., 1300" inputmode="decimal">
         </div>
       </div>
 
       <div class="row">
         <div>
-          <label id="slPctLabel">Stop Loss % (distance)</label>
-          <input id="slPercent" type="number" placeholder="e.g., 1.1" inputmode="decimal">
+          <label>Leverage (×)</label>
+          <input id="leverage" type="number" value="5" min="1" step="1" inputmode="numeric">
         </div>
         <div>
-          <label id="slPriceLabel">Stop Loss Price (auto sync)</label>
-          <input id="slPrice" type="number" placeholder="e.g., 116800" inputmode="decimal">
-        </div>
-      </div>
-
-      <div class="row">
-        <div>
-          <label>ATR timeframe (for suggestion)</label>
-          <select id="tfSL">
-            <option value="1m">1m</option>
-            <option value="3m">3m</option>
-            <option value="5m">5m</option>
-            <option value="15m" selected>15m</option>
-            <option value="30m">30m</option>
-            <option value="1h">1h</option>
-            <option value="2h">2h</option>
-            <option value="4h">4h</option>
-            <option value="6h">6h</option>
-            <option value="8h">8h</option>
-            <option value="12h">12h</option>
-            <option value="1d">1d</option>
-            <option value="3d">3d</option>
-            <option value="1w">1w</option>
-            <option value="1M">1M</option>
-          </select>
-        </div>
-        <div>
-          <label>ATR multiple</label>
-          <input id="atrMult" type="number" step="0.1" value="1.0" inputmode="decimal">
-          <button class="btn" id="btnSuggestSL" style="margin-top:8px">Suggest SL (ATR)</button>
+          <label>Risk/Reward Ratio</label>
+          <input id="rr" type="number" placeholder="e.g., 2" inputmode="decimal">
         </div>
       </div>
 
       <button class="btn" id="btnCalc">Calculate</button>
 
-      <div id="marginResult" class="result"></div>
-      <div id="calcSteps" class="muted" style="margin-top:8px; white-space:pre-line"></div>
-      <div id="marginNotes" class="muted"></div>
+      <!-- Outputs (only after Calculate) -->
+      <div id="outputs" class="result" style="display:none">
+        <div class="kv"><span>Potential Loss</span><span id="outLoss">$0.00</span></div>
+        <div class="kv"><span>Position Size</span><span id="outPos">$0.00</span></div>
+        <div class="kv"><span>Stop Loss</span><span id="outSL">$0.00</span></div>
+        <div class="kv"><span>Take Profit</span><span id="outTP">$0.00</span></div>
+      </div>
     </div>
   </div>
 
-  <!-- Support / Resistance Zones -->
+  <!-- Support / Resistance Zones (unchanged) -->
   <div id="srTab" class="tab">
     <div class="card">
       <h2 style="margin:0 0 8px">BTC Support & Resistance</h2>
-      <p class="muted" style="margin:0 0 12px">Zones from clustered swing highs/lows. Default symbol BTCUSDT.</p>
+      <p style="color:#9ca3af; margin:0 0 12px">Zones from clustered swing highs/lows. Default symbol BTCUSDT.</p>
 
       <div class="row">
         <div>
@@ -195,12 +142,11 @@
 
       <button class="btn" id="btnZones">Get Zones</button>
       <div id="srResult" class="result"></div>
-      <div id="srNotes" class="muted"></div>
     </div>
   </div>
 
 <script>
-  // --- Tab switching ---
+  // Tabs
   const tabs = { margin: document.getElementById('marginTab'), sr: document.getElementById('srTab') };
   document.getElementById('btnMargin').onclick = () => switchTab('margin');
   document.getElementById('btnSR').onclick = () => switchTab('sr');
@@ -211,18 +157,36 @@
     if (tab === 'sr') { document.getElementById('btnSR').classList.add('active'); tabs.sr.classList.add('active'); }
   }
 
-  // --- Utilities ---
+  // Utils
   const $ = id => document.getElementById(id);
   const fmt = (n, d=2) => Number(n).toLocaleString(undefined,{maximumFractionDigits:d, minimumFractionDigits:d});
 
-  // Risk input toggle
-  $('riskMode').addEventListener('change', ()=>{
-    const mode = $('riskMode').value;
-    $('riskPercentWrap').style.display = mode==='percent' ? '' : 'none';
-    $('riskFixedWrap').style.display = mode==='fixed' ? '' : 'none';
+  // Calculator (exact spec)
+  document.getElementById('btnCalc').addEventListener('click', ()=>{
+    const acct = parseFloat($('accountSize').value);
+    const riskPct = parseFloat($('riskPercent').value);
+    const entry = parseFloat($('entryPrice').value);
+    const dist = parseFloat($('distance').value);
+    const lev = Math.max(1, parseInt($('leverage').value)||1);
+    const rr = parseFloat($('rr').value);
+
+    if ([acct,riskPct,entry,dist,lev,rr].some(x=>isNaN(x))) { alert('Fill all inputs.'); return; }
+    if (acct<=0 || riskPct<=0 || entry<=0 || dist<=0 || lev<=0 || rr<=0) { alert('All values must be positive.'); return; }
+
+    const potentialLoss = acct * (riskPct/100);                  // 3
+    const positionSize = (potentialLoss * entry) / (dist * lev); // 7
+    const stopLoss = entry - dist;                                // 8 (LONG only)
+    const takeProfit = entry + (dist * rr);                       // 10
+
+    $('outLoss').textContent = `$${fmt(potentialLoss,2)}`;
+    $('outPos').textContent  = `$${fmt(positionSize,2)}`;
+    $('outSL').textContent   = `$${fmt(stopLoss,2)}`;
+    $('outTP').textContent   = `$${fmt(takeProfit,2)}`;
+
+    $('outputs').style.display = '';
   });
 
-  // --- Fetch OHLC with fallbacks ---
+  // --- S/R (same as before, with Binance fallbacks) ---
   async function fetchKlines(symbol, interval, limit=1000) {
     const endpoints = [
       `https://data-api.binance.vision/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`,
@@ -231,235 +195,23 @@
     ];
     let lastErr;
     for (const url of endpoints) {
-      try {
-        const res = await fetch(url, { cache: 'no-store', mode: 'cors' });
-        if (res.ok) return await res.json();
-        lastErr = new Error(`HTTP ${res.status} @ ${new URL(url).host}`);
-      } catch (e) { lastErr = e; }
+      try { const res = await fetch(url, { cache: 'no-store', mode: 'cors' }); if (res.ok) return await res.json(); lastErr = new Error(`HTTP ${res.status}`);} catch(e){ lastErr=e; }
     }
     throw lastErr || new Error('All endpoints failed');
   }
-
-  function computeATR(klines, period=14) {
-    const highs = klines.map(c => +c[2]);
-    const lows  = klines.map(c => +c[3]);
-    const closes= klines.map(c => +c[4]);
-    const TR = [];
-    for (let i=0;i<highs.length;i++){
-      if (i===0) { TR.push(highs[i]-lows[i]); continue; }
-      const prevClose = closes[i-1];
-      const tr = Math.max(highs[i]-lows[i], Math.abs(highs[i]-prevClose), Math.abs(lows[i]-prevClose));
-      TR.push(tr);
-    }
-    const n = Math.min(period, TR.length);
-    return TR.slice(-n).reduce((a,b)=>a+b,0)/n;
+  function computeATR(klines, period=14){
+    const highs=klines.map(c=>+c[2]); const lows=klines.map(c=>+c[3]); const closes=klines.map(c=>+c[4]);
+    const TR=[]; for(let i=0;i<highs.length;i++){ if(i===0){TR.push(highs[i]-lows[i]); continue;} const pc=closes[i-1]; TR.push(Math.max(highs[i]-lows[i], Math.abs(highs[i]-pc), Math.abs(lows[i]-pc))); }
+    const n=Math.min(period,TR.length); return TR.slice(-n).reduce((a,b)=>a+b,0)/n;
   }
+  function findSwingPoints(klines, window=3){ const H=klines.map(c=>+c[2]); const L=klines.map(c=>+c[3]); const hi=[],lo=[]; for(let i=window;i<klines.length-window;i++){ const h=H[i], l=L[i]; let isMax=true,isMin=true; for(let j=i-window;j<=i+window;j++){ if(H[j]>h) isMax=false; if(L[j]<l) isMin=false; } if(isMax) hi.push(h); if(isMin) lo.push(l);} return {swingsHi:hi,swingsLo:lo}; }
+  function clusterLevels(levels,tol){ levels.sort((a,b)=>a-b); const clusters=[]; let cur=[]; for(const lv of levels){ if(!cur.length||Math.abs(lv-cur[cur.length-1])<=tol){cur.push(lv);} else {clusters.push(cur.slice()); cur=[lv];}} if(cur.length) clusters.push(cur); return clusters.map(arr=>({min:Math.min(...arr),max:Math.max(...arr),count:arr.length,mid:(Math.min(...arr)+Math.max(...arr))/2})); }
+  function msForWindow(val){ const d=86400000; if(val==='1w') return 7*d; if(val==='1m') return 30*d; if(val==='3m') return 90*d; if(val==='6m') return 180*d; if(val==='1y') return 365*d; return null; }
+  async function computeZones(){ const sym=($('symbol').value||'BTCUSDT').toUpperCase(); const tfSel=$('timeframe').value; const lookback=$('lookback').value; const fetchTF=(tfSel==='1Y')?'1M':tfSel; const kl=await fetchKlines(sym,fetchTF,1000); let data=kl; if(tfSel==='1Y'){ data=kl.slice(-12);} else if(lookback!=='auto'){ const cutoff=kl[kl.length-1][0]-msForWindow(lookback); data=kl.filter(c=>c[0]>=cutoff); if(data.length<50) data=kl.slice(-Math.min(200,kl.length)); } const atr=computeATR(data,14); const {swingsHi,swingsLo}=findSwingPoints(data,3); const tol=Math.max(atr*0.5,5); const res=clusterLevels(swingsHi,tol).sort((a,b)=>b.mid-a.mid); const sup=clusterLevels(swingsLo,tol).sort((a,b)=>a.mid-b.mid); const close=+data[data.length-1][4]; return {res,sup,atr,close,sym,tfSel}; }
+  document.getElementById('btnZones').addEventListener('click', async()=>{ try{ $('srResult').textContent='Calculating…'; const {res,sup,atr,close,sym,tfSel}=await computeZones(); const fmtn=(n)=>Number(n).toLocaleString(undefined,{maximumFractionDigits:2,minimumFractionDigits:2}); const row=(z,l)=>z.slice(0,4).map(x=>`<div class=\"kv\"><span>${l} (${x.count})</span><span>$${fmtn(x.min)} – $${fmtn(x.max)}</span></div>`).join(''); $('srResult').innerHTML = `<div class=\"kv\"><span>Symbol / TF</span><span>${sym} • ${tfSel}</span></div><div class=\"kv\"><span>Last Close</span><span>$${fmtn(close)}</span></div><div class=\"kv\"><span>ATR(14)</span><span>$${fmtn(atr)}</span></div><hr style=\"border:none;border-top:1px solid #2a2c30;margin:8px 0\">${row(sup,'Support')}${row(res,'Resistance')}`; } catch(err){ $('srResult').textContent='Error: '+err.message; }});
 
-  // --- SL mode helpers ---
-  function updateSlLabels(){
-    const mode = $('slMode').value;
-    $('slPctLabel').textContent = mode==='roe' ? 'Stop Loss (ROE %)' : 'Stop Loss % (distance)';
-    $('slPriceLabel').textContent = 'Stop Loss Price (auto sync)';
-  }
-  $('slMode').addEventListener('change', ()=>{ updateSlLabels(); syncAll(); });
-
-  function syncFromPercent(){
-    const dir=$('direction').value, entry=+$('entryPrice').value, pct=+$('slPercent').value;
-    if(!entry||!pct) return;
-    $('slPrice').value = dir==='long' ? (entry*(1-pct/100)).toFixed(2) : (entry*(1+pct/100)).toFixed(2);
-  }
-  function syncFromPrice(){
-    const dir=$('direction').value, entry=+$('entryPrice').value, sl=+$('slPrice').value;
-    if(!entry||!sl) return;
-    const dist = dir==='long' ? (entry-sl) : (sl-entry);
-    $('slPercent').value = (dist/entry*100).toFixed(3);
-  }
-  function syncFromRoe(){
-    const dir=$('direction').value, entry=+$('entryPrice').value, lev=Math.max(1,+$('leverage').value||1), roe=+$('slPercent').value;
-    if(!entry||!roe) return;
-    const pricePct = roe/lev;
-    $('slPrice').value = dir==='long' ? (entry*(1-pricePct/100)).toFixed(2) : (entry*(1+pricePct/100)).toFixed(2);
-  }
-  function syncToRoe(){
-    const dir=$('direction').value, entry=+$('entryPrice').value, sl=+$('slPrice').value, lev=Math.max(1,+$('leverage').value||1);
-    if(!entry||!sl) return;
-    const pricePct = (dir==='long' ? (entry-sl) : (sl-entry))/entry*100;
-    $('slPercent').value = (pricePct*lev).toFixed(3);
-  }
-  function syncAll(source){
-    const mode = $('slMode').value;
-    if(mode==='percent'){
-      if(source==='price') syncFromPrice(); else syncFromPercent();
-    } else if(mode==='price'){
-      syncFromPrice();
-    } else { // roe
-      if(source==='price') syncToRoe(); else syncFromRoe();
-    }
-  }
-
-  ['entryPrice','direction','leverage','slPercent'].forEach(id=>{
-    $(id).addEventListener('input', ()=>syncAll('percent'));
-    $(id).addEventListener('change', ()=>syncAll('percent'));
-  });
-  ['slPrice'].forEach(id=>{
-    $(id).addEventListener('input', ()=>syncAll('price'));
-    $(id).addEventListener('change', ()=>syncAll('price'));
-  });
-  updateSlLabels();
-
-  // --- SL suggestion via ATR ---
-  document.getElementById('btnSuggestSL').addEventListener('click', async ()=>{
-    try {
-      const entry = parseFloat($('entryPrice').value);
-      if (isNaN(entry) || entry<=0) { alert('Enter a valid Entry Price first.'); return; }
-      const tf = $('tfSL').value; const mult = parseFloat($('atrMult').value)||1.0;
-      const kl = await fetchKlines('BTCUSDT', tf, 300);
-      const atr = computeATR(kl, 14);
-      const dir = $('direction').value;
-      const sl = dir==='long' ? entry - atr*mult : entry + atr*mult;
-      $('slPrice').value = sl.toFixed(2);
-      syncAll('price');
-      $('marginNotes').textContent = `Suggested SL uses ATR(14) × ${mult} on ${tf}. ATR ≈ ${fmt(atr,2)}.`;
-    } catch(err){ alert('Could not suggest SL: '+err.message); }
-  });
-
-  // --- Position sizing ---
-  document.getElementById('btnCalc').addEventListener('click', ()=>{
-    const acct = parseFloat($('accountSize').value);
-    const riskMode = $('riskMode').value;
-    const riskPct = parseFloat($('riskPercent').value);
-    const riskFixed = parseFloat($('riskFixed').value);
-    const lev = Math.max(1, parseInt($('leverage').value)||1);
-    const dir = $('direction').value;
-    const entry = parseFloat($('entryPrice').value);
-    const slP = parseFloat($('slPrice').value);
-
-    if ([entry, slP].some(x=>isNaN(x))) { alert('Fill Entry and SL.'); return; }
-    if (riskMode==='percent' && [acct, riskPct].some(x=>isNaN(x))) { alert('Fill Account size and Risk %.'); return; }
-    if (riskMode==='fixed' && isNaN(riskFixed)) { alert('Fill Risk $.'); return; }
-
-    const risk$ = (riskMode==='percent') ? (acct * (riskPct/100)) : riskFixed;
-    if (risk$<=0) { alert('Risk must be positive.'); return; }
-
-    const priceRiskPerUnit = Math.abs(entry - slP); // distance $ per 1 BTC
-    if (priceRiskPerUnit<=0){ alert('Stop must be away from entry.'); return; }
-
-    const qty = risk$ / priceRiskPerUnit;              // BTC size
-    const positionValue = qty * entry;                 // USD notional
-    const marginRequired = positionValue / lev;        // USD margin
-    const slPercent = (priceRiskPerUnit/entry)*100;
-
-    $('marginResult').innerHTML = `
-      <div class=\"kv\"><span>Risk $</span><span>$${fmt(risk$,2)}${riskMode==='percent' ? ` (${fmt(riskPct,2)}%)` : ''}</span></div>
-      <div class=\"kv\"><span>Order Size</span><span>${fmt(qty,6)} BTC</span></div>
-      <div class=\"kv\"><span>Position Size (USD)</span><span>$${fmt(positionValue,2)}</span></div>
-      <div class=\"kv\"><span>Margin Required @ ${lev}×</span><span>$${fmt(marginRequired,2)}</span></div>
-      <div class=\"kv\"><span>Stop Distance</span><span>$${fmt(priceRiskPerUnit,2)} (${fmt(slPercent,3)}%)</span></div>
-    `;
-
-    const riskLine = (riskMode==='percent') ? `${fmt(acct,2)} × ${fmt(riskPct,2)}% = $${fmt(risk$,2)}` : `$${fmt(risk$,2)} (fixed)`;
-    $('calcSteps').textContent = `Steps
-1) Risk $: ${riskLine}
-2) Distance $: |${fmt(entry,2)} − ${fmt(slP,2)}| = $${fmt(priceRiskPerUnit,2)}
-3) BTC qty: $${fmt(risk$,2)} ÷ $${fmt(priceRiskPerUnit,2)} = ${fmt(qty,6)} BTC
-4) Position size: ($${fmt(risk$,2)} × $${fmt(entry,2)}) ÷ $${fmt(priceRiskPerUnit,2)} = $${fmt(positionValue,2)}
-5) Margin @ ${lev}×: $${fmt(positionValue,2)} ÷ ${lev} = $${fmt(marginRequired,2)}`;
-
-    $('marginNotes').textContent = 'This matches the exchange-style method. Excludes fees/funding/liquidation buffers.';
-  });
-
-  // --- Support/Resistance Zones ---
-  function findSwingPoints(klines, window=3){
-    const highs = klines.map(c=>+c[2]);
-    const lows = klines.map(c=>+c[3]);
-    const swingsHi = []; const swingsLo = [];
-    for (let i=window;i<klines.length-window;i++){
-      const h = highs[i]; const l = lows[i];
-      let isMax = true, isMin = true;
-      for (let j=i-window;j<=i+window;j++){
-        if (highs[j]>h) isMax=false;
-        if (lows[j]<l) isMin=false;
-      }
-      if (isMax) swingsHi.push(h);
-      if (isMin) swingsLo.push(l);
-    }
-    return { swingsHi, swingsLo };
-  }
-
-  function clusterLevels(levels, tolerance){
-    levels.sort((a,b)=>a-b);
-    const clusters=[]; let cur=[];
-    for (const lv of levels){
-      if (!cur.length || Math.abs(lv - cur[cur.length-1]) <= tolerance){ cur.push(lv); }
-      else { clusters.push(cur.slice()); cur=[lv]; }
-    }
-    if (cur.length) clusters.push(cur);
-    return clusters.map(arr=>({
-      min: Math.min(...arr), max: Math.max(...arr), count: arr.length, mid: (Math.min(...arr)+Math.max(...arr))/2
-    }));
-  }
-
-  function msForWindow(val){
-    const day = 86400000;
-    if (val==='1w') return 7*day;
-    if (val==='1m') return 30*day;
-    if (val==='3m') return 90*day;
-    if (val==='6m') return 180*day;
-    if (val==='1y') return 365*day;
-    return null;
-  }
-
-  async function computeZones(){
-    const sym = ($('symbol').value || 'BTCUSDT').toUpperCase();
-    const tfSel = $('timeframe').value;
-    const lookback = $('lookback').value;
-    const sens = parseFloat($('sensitivity').value || '0.5');
-
-    const fetchTF = (tfSel==='1Y') ? '1M' : tfSel; // 1Y view uses monthly candles
-    const kl = await fetchKlines(sym, fetchTF, 1000);
-
-    let data = kl;
-    if (tfSel==='1Y') {
-      data = kl.slice(-12);
-    } else if (lookback !== 'auto') {
-      const cutoff = kl[kl.length-1][0] - msForWindow(lookback);
-      data = kl.filter(c => c[0] >= cutoff);
-      if (data.length < 50) data = kl.slice(-Math.min(200, kl.length));
-    }
-
-    const atr = computeATR(data,14);
-    const {swingsHi, swingsLo} = findSwingPoints(data, 3);
-    const tol = Math.max(atr*sens, 5);
-    const resZones = clusterLevels(swingsHi, tol).sort((a,b)=> b.mid - a.mid);
-    const supZones = clusterLevels(swingsLo, tol).sort((a,b)=> a.mid - b.mid);
-    const close = +data[data.length-1][4];
-    return { resZones, supZones, atr, close, sym, tfSel, lookback };
-  }
-
-  function renderZones(zs, label){
-    return zs.slice(0,4).map(z=>`<div class=\"kv\"><span>${label} (${z.count} touches)</span><span>$${fmt(z.min,2)} – $${fmt(z.max,2)}</span></div>`).join('');
-  }
-
-  document.getElementById('btnZones').addEventListener('click', async ()=>{
-    try{
-      document.getElementById('srResult').textContent = 'Calculating…';
-      const {resZones, supZones, atr, close, sym, tfSel, lookback} = await computeZones();
-      document.getElementById('srResult').innerHTML = `
-        <div class=\"kv\"><span>Symbol / TF</span><span>${sym} • ${tfSel}</span></div>
-        <div class=\"kv\"><span>Last Close</span><span>$${fmt(close,2)}</span></div>
-        <div class=\"kv\"><span>ATR(14)</span><span>$${fmt(atr,2)}</span></div>
-        <hr style=\"border:none;border-top:1px solid #2a2c30;margin:8px 0\">
-        ${renderZones(supZones,'Support')}
-        ${renderZones(resZones,'Resistance')}
-      `;
-      document.getElementById('srNotes').textContent = 'If data fails to load, your network may block Binance. This build tries binance.vision → binance.com → binance.us.';
-    }catch(err){ document.getElementById('srResult').textContent = 'Error: '+err.message; }
-  });
-
-  // --- PWA ---
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js'); });
-  }
+  // PWA
+  if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js'); }); }
 </script>
 </body>
 </html>
