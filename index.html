@@ -38,23 +38,34 @@
   <div id="marginTab" class="tab active">
     <div class="card">
       <h2 style="margin:0 0 8px">Margin Calculator</h2>
-      <p class="muted" style="margin:0 0 12px">Risk-based position sizing with optional ATR stop suggestion.</p>
+      <p class="muted" style="margin:0 0 12px">Risk-based position sizing. Choose SL mode: % distance, exact price, or ROE % (exchange style).</p>
 
       <label>Account Size (USD)</label>
-      <input id="accountSize" type="number" placeholder="e.g., 10000" inputmode="decimal">
+      <input id="accountSize" type="number" placeholder="e.g., 100" inputmode="decimal">
 
       <div class="row">
         <div>
-          <label>Risk % per trade</label>
-          <input id="riskPercent" type="number" placeholder="e.g., 2" inputmode="decimal">
+          <label>Risk input</label>
+          <select id="riskMode">
+            <option value="percent" selected>% of account</option>
+            <option value="fixed">$ fixed risk</option>
+          </select>
         </div>
-        <div>
-          <label>Leverage (×)</label>
-          <input id="leverage" type="number" value="1" min="1" step="1" inputmode="numeric">
+        <div id="riskPercentWrap">
+          <label>Risk % per trade</label>
+          <input id="riskPercent" type="number" placeholder="e.g., 5" inputmode="decimal">
+        </div>
+        <div id="riskFixedWrap" style="display:none">
+          <label>Risk $</label>
+          <input id="riskFixed" type="number" placeholder="e.g., 5" inputmode="decimal">
         </div>
       </div>
 
       <div class="row">
+        <div>
+          <label>Leverage (×)</label>
+          <input id="leverage" type="number" value="5" min="1" step="1" inputmode="numeric">
+        </div>
         <div>
           <label>Direction</label>
           <select id="direction">
@@ -62,20 +73,31 @@
             <option value="short">Short</option>
           </select>
         </div>
+      </div>
+
+      <div class="row">
         <div>
           <label>Entry Price (USD)</label>
-          <input id="entryPrice" type="number" placeholder="e.g., 40000" inputmode="decimal">
+          <input id="entryPrice" type="number" placeholder="e.g., 118100" inputmode="decimal">
+        </div>
+        <div>
+          <label>SL input mode</label>
+          <select id="slMode">
+            <option value="percent" selected>% (price distance)</option>
+            <option value="price">Price</option>
+            <option value="roe">ROE % (exchange)</option>
+          </select>
         </div>
       </div>
 
       <div class="row">
         <div>
-          <label>Stop Loss % (distance)</label>
-          <input id="slPercent" type="number" placeholder="e.g., 1.5" inputmode="decimal">
+          <label id="slPctLabel">Stop Loss % (distance)</label>
+          <input id="slPercent" type="number" placeholder="e.g., 1.1" inputmode="decimal">
         </div>
         <div>
-          <label>Stop Loss Price (auto sync)</label>
-          <input id="slPrice" type="number" placeholder="e.g., 39400" inputmode="decimal">
+          <label id="slPriceLabel">Stop Loss Price (auto sync)</label>
+          <input id="slPrice" type="number" placeholder="e.g., 116800" inputmode="decimal">
         </div>
       </div>
 
@@ -103,13 +125,14 @@
         <div>
           <label>ATR multiple</label>
           <input id="atrMult" type="number" step="0.1" value="1.0" inputmode="decimal">
+          <button class="btn" id="btnSuggestSL" style="margin-top:8px">Suggest SL (ATR)</button>
         </div>
       </div>
 
-      <button class="btn" id="btnSuggestSL">Suggest SL (ATR)</button>
       <button class="btn" id="btnCalc">Calculate</button>
 
       <div id="marginResult" class="result"></div>
+      <div id="calcSteps" class="muted" style="margin-top:8px; white-space:pre-line"></div>
       <div id="marginNotes" class="muted"></div>
     </div>
   </div>
@@ -192,12 +215,29 @@
   const $ = id => document.getElementById(id);
   const fmt = (n, d=2) => Number(n).toLocaleString(undefined,{maximumFractionDigits:d, minimumFractionDigits:d});
 
-  // --- Fetch OHLC from Binance ---
+  // Risk input toggle
+  $('riskMode').addEventListener('change', ()=>{
+    const mode = $('riskMode').value;
+    $('riskPercentWrap').style.display = mode==='percent' ? '' : 'none';
+    $('riskFixedWrap').style.display = mode==='fixed' ? '' : 'none';
+  });
+
+  // --- Fetch OHLC with fallbacks ---
   async function fetchKlines(symbol, interval, limit=1000) {
-    const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error('Network error fetching klines');
-    return await res.json();
+    const endpoints = [
+      `https://data-api.binance.vision/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`,
+      `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`,
+      `https://api.binance.us/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`
+    ];
+    let lastErr;
+    for (const url of endpoints) {
+      try {
+        const res = await fetch(url, { cache: 'no-store', mode: 'cors' });
+        if (res.ok) return await res.json();
+        lastErr = new Error(`HTTP ${res.status} @ ${new URL(url).host}`);
+      } catch (e) { lastErr = e; }
+    }
+    throw lastErr || new Error('All endpoints failed');
   }
 
   function computeATR(klines, period=14) {
@@ -215,28 +255,60 @@
     return TR.slice(-n).reduce((a,b)=>a+b,0)/n;
   }
 
-  // --- Margin Calculator ---
-  function syncSLFromPercent(){
-    const dir = $('direction').value;
-    const entry = parseFloat($('entryPrice').value);
-    const slPct = parseFloat($('slPercent').value);
-    if (isNaN(entry) || isNaN(slPct)) return;
-    $('slPrice').value = dir==='long' ? (entry * (1 - slPct/100)).toFixed(2) : (entry * (1 + slPct/100)).toFixed(2);
+  // --- SL mode helpers ---
+  function updateSlLabels(){
+    const mode = $('slMode').value;
+    $('slPctLabel').textContent = mode==='roe' ? 'Stop Loss (ROE %)' : 'Stop Loss % (distance)';
+    $('slPriceLabel').textContent = 'Stop Loss Price (auto sync)';
   }
-  function syncPercentFromSL(){
-    const dir = $('direction').value;
-    const entry = parseFloat($('entryPrice').value);
-    const slP = parseFloat($('slPrice').value);
-    if (isNaN(entry) || isNaN(slP) || entry<=0) return;
-    const dist = dir==='long' ? (entry - slP) : (slP - entry);
-    $('slPercent').value = ((dist/entry)*100).toFixed(3);
-  }
-  $('slPercent').addEventListener('input', syncSLFromPercent);
-  $('slPrice').addEventListener('input', syncPercentFromSL);
-  $('entryPrice').addEventListener('input', ()=>{ syncSLFromPercent(); syncPercentFromSL(); });
-  $('direction').addEventListener('change', ()=>{ syncSLFromPercent(); syncPercentFromSL(); });
+  $('slMode').addEventListener('change', ()=>{ updateSlLabels(); syncAll(); });
 
-  $('btnSuggestSL').addEventListener('click', async ()=>{
+  function syncFromPercent(){
+    const dir=$('direction').value, entry=+$('entryPrice').value, pct=+$('slPercent').value;
+    if(!entry||!pct) return;
+    $('slPrice').value = dir==='long' ? (entry*(1-pct/100)).toFixed(2) : (entry*(1+pct/100)).toFixed(2);
+  }
+  function syncFromPrice(){
+    const dir=$('direction').value, entry=+$('entryPrice').value, sl=+$('slPrice').value;
+    if(!entry||!sl) return;
+    const dist = dir==='long' ? (entry-sl) : (sl-entry);
+    $('slPercent').value = (dist/entry*100).toFixed(3);
+  }
+  function syncFromRoe(){
+    const dir=$('direction').value, entry=+$('entryPrice').value, lev=Math.max(1,+$('leverage').value||1), roe=+$('slPercent').value;
+    if(!entry||!roe) return;
+    const pricePct = roe/lev;
+    $('slPrice').value = dir==='long' ? (entry*(1-pricePct/100)).toFixed(2) : (entry*(1+pricePct/100)).toFixed(2);
+  }
+  function syncToRoe(){
+    const dir=$('direction').value, entry=+$('entryPrice').value, sl=+$('slPrice').value, lev=Math.max(1,+$('leverage').value||1);
+    if(!entry||!sl) return;
+    const pricePct = (dir==='long' ? (entry-sl) : (sl-entry))/entry*100;
+    $('slPercent').value = (pricePct*lev).toFixed(3);
+  }
+  function syncAll(source){
+    const mode = $('slMode').value;
+    if(mode==='percent'){
+      if(source==='price') syncFromPrice(); else syncFromPercent();
+    } else if(mode==='price'){
+      syncFromPrice();
+    } else { // roe
+      if(source==='price') syncToRoe(); else syncFromRoe();
+    }
+  }
+
+  ['entryPrice','direction','leverage','slPercent'].forEach(id=>{
+    $(id).addEventListener('input', ()=>syncAll('percent'));
+    $(id).addEventListener('change', ()=>syncAll('percent'));
+  });
+  ['slPrice'].forEach(id=>{
+    $(id).addEventListener('input', ()=>syncAll('price'));
+    $(id).addEventListener('change', ()=>syncAll('price'));
+  });
+  updateSlLabels();
+
+  // --- SL suggestion via ATR ---
+  document.getElementById('btnSuggestSL').addEventListener('click', async ()=>{
     try {
       const entry = parseFloat($('entryPrice').value);
       if (isNaN(entry) || entry<=0) { alert('Enter a valid Entry Price first.'); return; }
@@ -246,25 +318,31 @@
       const dir = $('direction').value;
       const sl = dir==='long' ? entry - atr*mult : entry + atr*mult;
       $('slPrice').value = sl.toFixed(2);
-      syncPercentFromSL();
+      syncAll('price');
       $('marginNotes').textContent = `Suggested SL uses ATR(14) × ${mult} on ${tf}. ATR ≈ ${fmt(atr,2)}.`;
     } catch(err){ alert('Could not suggest SL: '+err.message); }
   });
 
-  $('btnCalc').addEventListener('click', ()=>{
+  // --- Position sizing ---
+  document.getElementById('btnCalc').addEventListener('click', ()=>{
     const acct = parseFloat($('accountSize').value);
+    const riskMode = $('riskMode').value;
     const riskPct = parseFloat($('riskPercent').value);
+    const riskFixed = parseFloat($('riskFixed').value);
     const lev = Math.max(1, parseInt($('leverage').value)||1);
     const dir = $('direction').value;
     const entry = parseFloat($('entryPrice').value);
     const slP = parseFloat($('slPrice').value);
 
-    if ([acct,riskPct,entry,slP].some(x=>isNaN(x))){ alert('Please fill Account Size, Risk %, Entry, and SL.'); return; }
-    if (entry<=0 || acct<=0 || riskPct<=0){ alert('Values must be positive.'); return; }
+    if ([entry, slP].some(x=>isNaN(x))) { alert('Fill Entry and SL.'); return; }
+    if (riskMode==='percent' && [acct, riskPct].some(x=>isNaN(x))) { alert('Fill Account size and Risk %.'); return; }
+    if (riskMode==='fixed' && isNaN(riskFixed)) { alert('Fill Risk $.'); return; }
 
-    const risk$ = acct * (riskPct/100);
-    const priceRiskPerUnit = dir==='long' ? (entry - slP) : (slP - entry);
-    if (priceRiskPerUnit<=0){ alert('Stop must be beyond entry in the correct direction.'); return; }
+    const risk$ = (riskMode==='percent') ? (acct * (riskPct/100)) : riskFixed;
+    if (risk$<=0) { alert('Risk must be positive.'); return; }
+
+    const priceRiskPerUnit = Math.abs(entry - slP); // distance $ per 1 BTC
+    if (priceRiskPerUnit<=0){ alert('Stop must be away from entry.'); return; }
 
     const qty = risk$ / priceRiskPerUnit;              // BTC size
     const positionValue = qty * entry;                 // USD notional
@@ -272,13 +350,22 @@
     const slPercent = (priceRiskPerUnit/entry)*100;
 
     $('marginResult').innerHTML = `
-      <div class="kv"><span>Risk $</span><span>$${fmt(risk$,2)}</span></div>
-      <div class="kv"><span>Quantity</span><span>${fmt(qty,6)} BTC</span></div>
-      <div class="kv"><span>Position Value</span><span>$${fmt(positionValue,2)}</span></div>
-      <div class="kv"><span>Margin Required @ ${lev}×</span><span>$${fmt(marginRequired,2)}</span></div>
-      <div class="kv"><span>Stop Loss</span><span>${dir==='long'?'↓':'↑'} $${fmt(slP,2)} (${fmt(slPercent,3)}%)</span></div>
+      <div class=\"kv\"><span>Risk $</span><span>$${fmt(risk$,2)}${riskMode==='percent' ? ` (${fmt(riskPct,2)}%)` : ''}</span></div>
+      <div class=\"kv\"><span>Order Size</span><span>${fmt(qty,6)} BTC</span></div>
+      <div class=\"kv\"><span>Position Size (USD)</span><span>$${fmt(positionValue,2)}</span></div>
+      <div class=\"kv\"><span>Margin Required @ ${lev}×</span><span>$${fmt(marginRequired,2)}</span></div>
+      <div class=\"kv\"><span>Stop Distance</span><span>$${fmt(priceRiskPerUnit,2)} (${fmt(slPercent,3)}%)</span></div>
     `;
-    $('marginNotes').textContent = 'Excludes fees/funding/liquidation buffers. Ensure liquidation is outside your SL.';
+
+    const riskLine = (riskMode==='percent') ? `${fmt(acct,2)} × ${fmt(riskPct,2)}% = $${fmt(risk$,2)}` : `$${fmt(risk$,2)} (fixed)`;
+    $('calcSteps').textContent = `Steps
+1) Risk $: ${riskLine}
+2) Distance $: |${fmt(entry,2)} − ${fmt(slP,2)}| = $${fmt(priceRiskPerUnit,2)}
+3) BTC qty: $${fmt(risk$,2)} ÷ $${fmt(priceRiskPerUnit,2)} = ${fmt(qty,6)} BTC
+4) Position size: ($${fmt(risk$,2)} × $${fmt(entry,2)}) ÷ $${fmt(priceRiskPerUnit,2)} = $${fmt(positionValue,2)}
+5) Margin @ ${lev}×: $${fmt(positionValue,2)} ÷ ${lev} = $${fmt(marginRequired,2)}`;
+
+    $('marginNotes').textContent = 'This matches the exchange-style method. Excludes fees/funding/liquidation buffers.';
   });
 
   // --- Support/Resistance Zones ---
@@ -331,14 +418,13 @@
     const fetchTF = (tfSel==='1Y') ? '1M' : tfSel; // 1Y view uses monthly candles
     const kl = await fetchKlines(sym, fetchTF, 1000);
 
-    // Trim by lookback window
     let data = kl;
     if (tfSel==='1Y') {
-      data = kl.slice(-12); // last 12 months
+      data = kl.slice(-12);
     } else if (lookback !== 'auto') {
       const cutoff = kl[kl.length-1][0] - msForWindow(lookback);
       data = kl.filter(c => c[0] >= cutoff);
-      if (data.length < 50) data = kl.slice(-Math.min(200, kl.length)); // ensure enough bars
+      if (data.length < 50) data = kl.slice(-Math.min(200, kl.length));
     }
 
     const atr = computeATR(data,14);
@@ -351,7 +437,7 @@
   }
 
   function renderZones(zs, label){
-    return zs.slice(0,4).map(z=>`<div class="kv"><span>${label} (${z.count} touches)</span><span>$${fmt(z.min,2)} – $${fmt(z.max,2)}</span></div>`).join('');
+    return zs.slice(0,4).map(z=>`<div class=\"kv\"><span>${label} (${z.count} touches)</span><span>$${fmt(z.min,2)} – $${fmt(z.max,2)}</span></div>`).join('');
   }
 
   document.getElementById('btnZones').addEventListener('click', async ()=>{
@@ -359,14 +445,14 @@
       document.getElementById('srResult').textContent = 'Calculating…';
       const {resZones, supZones, atr, close, sym, tfSel, lookback} = await computeZones();
       document.getElementById('srResult').innerHTML = `
-        <div class="kv"><span>Symbol / TF</span><span>${sym} • ${tfSel}</span></div>
-        <div class="kv"><span>Last Close</span><span>$${fmt(close,2)}</span></div>
-        <div class="kv"><span>ATR(14)</span><span>$${fmt(atr,2)}</span></div>
-        <hr style="border:none;border-top:1px solid #2a2c30;margin:8px 0">
+        <div class=\"kv\"><span>Symbol / TF</span><span>${sym} • ${tfSel}</span></div>
+        <div class=\"kv\"><span>Last Close</span><span>$${fmt(close,2)}</span></div>
+        <div class=\"kv\"><span>ATR(14)</span><span>$${fmt(atr,2)}</span></div>
+        <hr style=\"border:none;border-top:1px solid #2a2c30;margin:8px 0\">
         ${renderZones(supZones,'Support')}
         ${renderZones(resZones,'Resistance')}
       `;
-      document.getElementById('srNotes').textContent = '“1Y” uses monthly candles (last 12). Lookback limits the analysis window; max 1000 candles fetched.';
+      document.getElementById('srNotes').textContent = 'If data fails to load, your network may block Binance. This build tries binance.vision → binance.com → binance.us.';
     }catch(err){ document.getElementById('srResult').textContent = 'Error: '+err.message; }
   });
 
